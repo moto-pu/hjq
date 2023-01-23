@@ -10,9 +10,19 @@ data JqFilter
   | JqNil
   deriving (Show, Read, Eq)
 
+data JqQuery
+  = JqQueryObject [(Text, JqQuery)]
+  | JqQueryArray [JqQuery]
+  | JqQueryFilter JqFilter
+  deriving (Show, Read, Eq)
+
 parseJqFilter :: Text -> Either Text JqFilter
 parseJqFilter s = showParseResult
   $ parse (jqFilterParser <* endOfInput) s `feed` ""
+
+parseJqQuery :: Text -> Either Text JqQuery
+parseJqQuery s = showParseResult
+  $ parse (jqQueryParser <* endOfInput) s `feed` ""
 
 jqFilterParser :: Parser JqFilter
 jqFilterParser = schar '.' >> (jqField <|> jqIndex <|> pure JqNil)
@@ -25,6 +35,23 @@ jqFilterParser = schar '.' >> (jqField <|> jqIndex <|> pure JqNil)
 
     jqIndex :: Parser JqFilter
     jqIndex = JqIndex <$> (schar '[' *> decimal <* schar ']') <*> jqFilter
+
+jqQueryParser :: Parser JqQuery
+jqQueryParser = queryArray <|> queryFilter <|> queryObject
+  where
+    queryArray :: Parser JqQuery
+    queryArray = JqQueryArray <$> (schar '[' *> jqQueryParser `sepBy` schar ',' <* schar ']')
+
+    queryFilter :: Parser JqQuery
+    queryFilter = JqQueryFilter <$> jqFilterParser
+
+    queryObject :: Parser JqQuery
+    queryObject = JqQueryObject <$> (schar '{' *> (qObj `sepBy` schar ',') <* schar '}')
+
+    qObj :: Parser (Text, JqQuery)
+    qObj = (,) <$> (schar '"' *> word <* schar '"') <*> (schar ':' *> jqQueryParser)
+
+
 
 showParseResult :: Show a => Result a -> Either Text a
 showParseResult (Done _ r) = Right r
